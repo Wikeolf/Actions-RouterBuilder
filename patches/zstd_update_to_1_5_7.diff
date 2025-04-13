@@ -1,0 +1,124 @@
+commit 6a8d77abfd9f2ff26d2a5f3154f3994b0d6478b4
+Author: Wikeolf <Wikeolf@Gmail.com>
+Date:   Sun Apr 13 19:26:19 2025 +0800
+
+    zstd: update to version 1.5.7
+
+diff --git a/utils/zstd/Makefile b/utils/zstd/Makefile
+index 254967919..ffb604b0a 100644
+--- a/utils/zstd/Makefile
++++ b/utils/zstd/Makefile
+@@ -1,20 +1,17 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=zstd
+-PKG_VERSION:=1.4.9
++PKG_VERSION:=1.5.7
+ PKG_RELEASE:=1
+ 
+-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.zst
++PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+ PKG_SOURCE_URL:=https://github.com/facebook/zstd/releases/download/v$(PKG_VERSION)
+-PKG_HASH:=61dce0e9a5036d7fb9b5709ee6567c2c8a1b4ba48a8e43afe9ae355cc37bb494
++PKG_HASH:=eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
+ 
+-PKG_MAINTAINER:=
++PKG_MAINTAINER:=Aleksey Vasilenko <aleksey.vasilenko@gmail.com>
+ PKG_LICENSE:=GPL-2.0-or-later
+ PKG_LICENSE_FILES:=COPYING
+ 
+-PKG_BUILD_DEPENDS:=meson/host
+-PKG_INSTALL:=1
+-
+ include $(INCLUDE_DIR)/package.mk
+ include ../../devel/meson/meson.mk
+ 
+@@ -64,16 +61,11 @@ ifeq ($(CONFIG_ZSTD_OPTIMIZE_O3),y)
+ TARGET_CFLAGS:= $(filter-out -O%,$(TARGET_CFLAGS)) -O3
+ endif
+ 
+-TARGET_CFLAGS += $(if $(CONFIG_USE_UCLIBC),-D_BSD_SOURCE)
++TARGET_CFLAGS += -DZSTD_USE_C90_QSORT
+ 
+ MESON_ARGS += \
+-	-Dlegacy_level=1 \
++	-Dlegacy_level=7 \
+ 	-Ddebug_level=0 \
+-	-Dbacktrace=false \
+-	-Dstatic_runtime=false \
+-	-Dbin_programs=true \
+-	-Dbin_tests=false \
+-	-Dbin_control=false \
+ 	-Dzlib=disabled \
+ 	-Dlzma=disabled \
+ 	-Dlz4=disabled \
+diff --git a/utils/zstd/patches/001-fix-meson.patch b/utils/zstd/patches/001-fix-meson.patch
+deleted file mode 100644
+index f9a69d049..000000000
+--- a/utils/zstd/patches/001-fix-meson.patch
++++ /dev/null
+@@ -1,11 +0,0 @@
+-Fixes build issue https://github.com/facebook/zstd/issues/2519
+---- a/build/meson/lib/meson.build
+-+++ b/build/meson/lib/meson.build
+-@@ -22,6 +22,7 @@ libzstd_sources = [join_paths(zstd_rootd
+-   join_paths(zstd_rootdir, 'lib/common/threading.c'),
+-   join_paths(zstd_rootdir, 'lib/common/pool.c'),
+-   join_paths(zstd_rootdir, 'lib/common/zstd_common.c'),
+-+  join_paths(zstd_rootdir, 'lib/common/zstd_trace.c'),
+-   join_paths(zstd_rootdir, 'lib/common/error_private.c'),
+-   join_paths(zstd_rootdir, 'lib/common/xxhash.c'),
+-   join_paths(zstd_rootdir, 'lib/compress/hist.c'),
+diff --git a/utils/zstd/patches/010-introduce_ZSTD_USE_C90_QSORT.diff b/utils/zstd/patches/010-introduce_ZSTD_USE_C90_QSORT.diff
+new file mode 100644
+index 000000000..c7b039ccb
+--- /dev/null
++++ b/utils/zstd/patches/010-introduce_ZSTD_USE_C90_QSORT.diff
+@@ -0,0 +1,47 @@
++diff --git a/lib/dictBuilder/cover.c b/lib/dictBuilder/cover.c
++index 2ef33c73e5d..29820d7e1ff 100644
++--- a/lib/dictBuilder/cover.c
+++++ b/lib/dictBuilder/cover.c
++@@ -24,9 +24,9 @@
++ /* qsort_r is an extension. */
++ #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__gnu_linux__) || \
++     defined(__CYGWIN__) || defined(__MSYS__)
++-#if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
++-#define _GNU_SOURCE
++-#endif
+++# if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
+++#   define _GNU_SOURCE
+++# endif
++ #endif
++ 
++ #include <stdio.h>  /* fprintf */
++@@ -241,8 +241,9 @@ typedef struct {
++   unsigned d;
++ } COVER_ctx_t;
++ 
++-#if !defined(_GNU_SOURCE) && !defined(__APPLE__) && !defined(_MSC_VER)
++-/* C90 only offers qsort() that needs a global context. */
+++#if defined(ZSTD_USE_C90_QSORT) \
+++  || (!defined(_GNU_SOURCE) && !defined(__APPLE__) && !defined(_MSC_VER))
+++/* Use global context for non-reentrant sort functions */
++ static COVER_ctx_t *g_coverCtx = NULL;
++ #endif
++ 
++@@ -328,7 +329,7 @@ static void stableSort(COVER_ctx_t *ctx) {
++     qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
++             ctx,
++             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
++-#elif defined(_GNU_SOURCE)
+++#elif defined(_GNU_SOURCE) && !defined(ZSTD_USE_C90_QSORT)
++     qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
++             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp),
++             ctx);
++@@ -342,7 +343,7 @@ static void stableSort(COVER_ctx_t *ctx) {
++           (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
++ #else /* C90 fallback.*/
++     g_coverCtx = ctx;
++-    /* TODO(cavalcanti): implement a reentrant qsort() when is not available. */
+++    /* TODO(cavalcanti): implement a reentrant qsort() when _r is not available. */
++     qsort(ctx->suffix, ctx->suffixSize, sizeof(U32),
++           (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
++ #endif

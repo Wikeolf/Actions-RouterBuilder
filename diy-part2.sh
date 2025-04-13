@@ -31,3 +31,6 @@ git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/l
 git clone https://github.com/sbwml/luci-app-alist package/alist
 git clone https://github.com/sbwml/luci-app-mosdns -b v5 package/mosdns
 git clone https://github.com/sbwml/luci-app-airconnect package/airconnect
+
+# Apply zstd upgrade patch
+patch -p1 -d feeds/packages < .diypatch/zstd_update_to_1_5_7.diff
