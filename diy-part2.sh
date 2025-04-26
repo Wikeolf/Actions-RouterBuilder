@@ -29,7 +29,8 @@ rm -rf feeds/packages/net/alist
 # Add new packages
 git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/lang/golang
 git clone https://github.com/sbwml/luci-app-alist package/alist
-git clone https://github.com/sbwml/luci-app-mosdns -b v5 package/mosdns
+#git clone https://github.com/sbwml/luci-app-mosdns -b v5 package/mosdns
+git clone https://github.com/wikeolf/luci-app-mosdns -b v5-dev package/mosdns
 git clone https://github.com/sbwml/luci-app-airconnect package/airconnect
 
 # Apply zstd upgrade patch
