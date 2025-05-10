@@ -28,6 +28,7 @@ env:
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
+  UPLOAD_PACKAGES: true
   CACHE_TOOLCHAIN: true
   TZ: Asia/Shanghai
 
@@ -168,6 +169,22 @@ jobs:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: openwrt/bin
 
+    - name: Prepare packages for upload
+      id: prepare_packages
+      if: env.UPLOAD_PACKAGES == 'true' && !cancelled()
+      run: |
+        cd $OPENWRT_PATH/bin/packages
+        # 创建一个目录用于存放所有软件包
+        mkdir -p /tmp/packages_zip
+        # 复制所有架构的软件包
+        cp -r * /tmp/packages_zip/
+        # 进入临时目录
+        cd /tmp/packages_zip
+        # 创建ZIP压缩包
+        zip -r packages_${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}.zip *
+        echo "PACKAGES_ZIP=/tmp/packages_zip/packages_${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}.zip" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
     - name: Organize files
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
@@ -201,7 +218,9 @@ jobs:
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+        files: |
+          ${{ env.FIRMWARE }}/*
+          ${{ env.PACKAGES_ZIP }}
 
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@main
